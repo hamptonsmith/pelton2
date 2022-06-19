@@ -22,4 +22,4 @@ if ! which microk8s &>/dev/null; then
             metallb:10.10.10.10-10.10.10.200 registry
 fi
 
-eval $INSTALL_CMD --mode 733 --owner root "$(dirname "$0")/*" /usr/bin/
+eval $INSTALL_CMD --mode 755 --owner root "$(dirname "$0")/*" /usr/bin/

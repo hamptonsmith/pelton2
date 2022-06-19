@@ -2,7 +2,7 @@
 
 set -e
 
-APT_CMD=${APT_CMD:-apt}
+APT_CMD=${APT_CMD:-apt-get}
 SNAP_CMD=${SNAP_CMD:-snap}
 MICROK8S_CMD=${KUBECTL_CMD:-microk8s}
 INSTALL_CMD=${INSTALL_CMD:-install}
@@ -16,12 +16,9 @@ if ! which docker &>/dev/null; then
 fi
 
 if ! which microk8s &>/dev/null; then
-    eval $SNAP_CMD install microk8s --classic
-    eval $MICROK8S_CMD 
+    eval $SNAP_CMD install microk8s --classic 
     eval $MICROK8S_CMD status --wait-ready
     eval $MICROK8S_CMD enable dns dashboard ingress metallb registry
 fi
 
-if ! which pelton-build-environment &>/dev/null; then
-    install --mode 733 --owner root "$(dirname "$0")/*" /usr/bin/
-fi
+eval $INSTALL_CMD --mode 733 --owner root "$(dirname "$0")/*" /usr/bin/

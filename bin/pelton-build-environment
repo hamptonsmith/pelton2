@@ -47,10 +47,6 @@ set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
 
 ISOLATION=${ISOLATION:-niliso}
 
-if [[ -z "$PELTON_ROOT_DIR" ]]; then
-    PELTON_ROOT_DIR=$(pwd)
-fi
-
 if [[ -z "$1" ]]; then
     echo 'Must specify a named configuration.'
     exit 1
@@ -58,6 +54,10 @@ fi
 CONFIG_NAME="$1"
 
 cd ${2:-.}
+
+if [[ -z "$PELTON_ROOT_DIR" ]]; then
+    PELTON_ROOT_DIR=$(pwd)
+fi
 
 PRINT_SCRIPT_DKR_CMD=$(cat pelton.json \
         | jq -r '.printScriptRunnerDockerfile')
@@ -136,7 +136,7 @@ echo "$CONFIGURATION_JSON" | jq -r '.dependencies // {} | keys[]' \
         export PELTON_CONFIG_NAME=$1
         export PELTON_ISO_KEY=${ISOLATION@Q}
         export PELTON_IMAGE_TAG=${IMAGE_NAME_BASE@Q}
-        export PELTON_ROOT_DIR=${PELTON_DOOR_DIR@Q}
+        export PELTON_ROOT_DIR=${PELTON_ROOT_DIR@Q}
         $DEP_NAVIGATE_CMD
         $0 --root ${PELTON_ROOT_DIR@Q} \
                 --visited-file ${VISITED_FILE_NAME@Q} \

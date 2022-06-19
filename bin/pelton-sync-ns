@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -e
+
+if [[ -z "$1" ]]; then
+    echo 'Must provide environment manifest.'
+    exit 1
+fi
+
+microk8s kubectl -n $2 apply -f "$1"
+
+microk8s kubectl -n $2 apply -f "$1" --prune --all --dry-run=server \
+        | cut -d' ' -f1-2 | grep '^.* pruned$' | grep -v '^namespace/' \
+        | cut -d' ' -f1 | xargs --no-run-if-empty microk8s kubectl delete

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+PRINT_SERVICE_DOCKERFILE_DEV=$(cat package.json \
+        | jq -r '.pelton.printServiceDockerfileDev')
+PROJECT_NAME=$(cat package.json | jq -r '.pelton.projectName')
+
+ENV_MANIFEST_FILE=$(mktemp)
+pelton-print-environment $ENV_MANIFEST_FILE
+pelton-sync-ns $ENV_MANIFEST_FILE "$1"
+rm $ENV_MANIFEST_FILE
+
+eval "$PRINT_SERVICE_DOCKERFILE_DEV" | DOCKER_BUILDKIT=1 docker build \
+        --ssh default \
+        --tag ${PROJECT_NAME} \
+        -f - .
+
+WRK_NODE_MODULES=$(mktemp -d)
+docker run \
+        -v $(pwd):/project \
+        -v $WRK_NODE_MODULES:/project/node_modules \
+        --rm \
+        ${PROJECT_NAME}:latest
+rm -rf $WRK_NODE_MODULES

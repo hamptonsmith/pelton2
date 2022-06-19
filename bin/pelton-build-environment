@@ -1,0 +1,152 @@
+#!/bin/bash
+
+# Usage:
+#
+# pelton-print-environment <configname> \
+#       [--isolation <isokey>] [--root <rootdir>] [--visited-file <filename>]
+
+# Pelton projects will get tagged <configured project dns>-<configname>-<isokey>
+
+set -e
+
+DOCKER_CMD=${DOCKER_CMD:-docker}
+DOCKER_REGISTRY=${DOCKER_REGISTRY:-localhost:32000}
+
+POSITIONAL_ARGS=()
+SKIP_PROJECTS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --isolation)
+        ISOLATION="$2"
+        shift
+        shift
+        ;;
+    --root)
+        PELTON_ROOT_DIR="$2"
+        shift
+        shift
+        ;;
+    --visited-file)
+        VISITED_FILE_NAME="$2"
+        shift
+        shift
+        ;;
+    -*|--*)
+      echo "Unknown option $1"
+      exit 1
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1") # save positional arg
+      shift # past argument
+      ;;
+  esac
+done
+
+set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
+
+ISOLATION=${ISOLATION:-niliso}
+
+if [[ -z "$PELTON_ROOT_DIR" ]]; then
+    PELTON_ROOT_DIR=$(pwd)
+fi
+
+if [[ -z "$1" ]]; then
+    echo 'Must specify a named configuration.'
+    exit 1
+fi
+CONFIG_NAME="$1"
+
+cd ${2:-.}
+
+PRINT_SCRIPT_DKR_CMD=$(cat pelton.json \
+        | jq -r '.printScriptRunnerDockerfile')
+PROJECT_NAME=$(cat pelton.json | jq -r '.projectName')
+PROJECT_DNS_NAME=$(cat pelton.json | jq -r '.projectDnsName');
+
+if [[ -z "$VISITED_FILE_NAME" ]]; then
+    NEED_CLEANUP=yes
+    VISITED_FILE_NAME=$(mktemp)
+fi
+
+while read -r SKIP; do
+    if [[ "$SKIP" == "$PROJECT_DNS_NAME $1 $ISOLATION" ]]; then
+        exit 0
+    fi
+done < "$VISITED_FILE_NAME"
+echo "$PROJECT_DNS_NAME $1 $ISOLATION" >> "$VISITED_FILE_NAME"
+
+1>&2 echo "Building $PROJECT_NAME environment..."
+
+CONFIGURATION_JSON=$(cat pelton.json | jq -c ".configurations.$1")
+PRINT_ENV_CMD=$(echo "$CONFIGURATION_JSON" | jq -r '.printEnvironment // ""')
+BUILD_IMG_CMD=$(echo "$CONFIGURATION_JSON" | jq -r '.buildImage // ""')
+
+IMAGE_NAME_BASE="${PROJECT_DNS_NAME}-$1-${ISOLATION}"
+SCRIPT_ENV_IMAGE_NAME="${IMAGE_NAME_BASE}-psr"
+SERVICE_IMAGE_NAME="${DOCKER_REGISTRY}/${IMAGE_NAME_BASE}"
+
+eval "$PRINT_SCRIPT_DKR_CMD" | DOCKER_BUILDKIT=1 eval $DOCKER_CMD build \
+        --ssh default \
+        --tag "$IMAGE_NAME_BASE" \
+        -f - . 1>&2
+
+HOST_PROJECT_DIR=${2:-.}
+function runInScriptEnv() {
+    eval $DOCKER_CMD run \
+            --volume "$(realpath $(pwd))":/project \
+            --volume "${PELTON_ROOT_DIR}":/pelton-root \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            --volume ${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK} \
+            -e SSH_AUTH_SOCK=${SSH_AUTH_SOCK} \
+            --workdir /project \
+            -e PELTON_CONFIG_NAME=$CONFIG_NAME \
+            -e PELTON_ISO_KEY=$ISOLATION \
+            -e PELTON_IMAGE_TAG=$IMAGE_NAME_BASE \
+            -e PELTON_ROOT_DIR=${PELTON_ROOT_DIR@Q} \
+            $SCRIPT_ENV_IMAGE_NAME \
+            sh -c ${1@Q}
+}
+
+if [[ -n "$BUILD_IMG_CMD" ]]; then
+    runInScriptEnv \
+            "set -- $1 ${ISOLATION} ${SERVICE_IMAGE_NAME} ; ${BUILD_IMG_CMD}"
+    eval ${DOCKER_CMD} push ${SERVICE_IMAGE_NAME}
+fi
+
+if [[ -n "$PRINT_ENV_CMD" ]]; then
+    runInScriptEnv \
+            "set -- $1 ${ISOLATION} ${SERVICE_IMAGE_NAME} ; ${PRINT_ENV_CMD}"
+fi
+
+echo "$CONFIGURATION_JSON" | jq -r '.dependencies // {} | keys[]' \
+| while IFS= read -r DEP; do
+    if [[ -z "$DEP" ]]; then
+        continue
+    fi
+    
+    DEP_CONFIG=$(echo "$CONFIGURATION_JSON" | jq -c ".dependencies[\"$DEP\"]")
+    DEP_NAVIGATE_CMD=$(echo "$DEP_CONFIG" | jq -r '.navigate')
+    DEP_CONFIG_NAME=$(echo "$DEP_CONFIG" | jq -r '.configuration // "default"')
+    DEP_ISO_KEY=$(echo "$DEP_CONFIG" | jq -r ".isolation // \"$ISOLATION\"")
+    
+    DEP_RECURSIVE_CMD="
+        set -e
+        set -- $1 ${ISOLATION@Q} ${IMAGE_NAME_BASE@Q} ${PELTON_ROOT_DIR@Q}
+        export PELTON_CONFIG_NAME=$1
+        export PELTON_ISO_KEY=${ISOLATION@Q}
+        export PELTON_IMAGE_TAG=${IMAGE_NAME_BASE@Q}
+        export PELTON_ROOT_DIR=${PELTON_DOOR_DIR@Q}
+        $DEP_NAVIGATE_CMD
+        $0 --root ${PELTON_ROOT_DIR@Q} \
+                --visited-file ${VISITED_FILE_NAME@Q} \
+                --isolation ${DEP_ISO_KEY@Q} ${DEP_CONFIG_NAME@Q}
+    "
+    
+    bash -c "$DEP_RECURSIVE_CMD"
+done
+
+if [[ -n "$NEED_CLEANUP" ]]; then
+    rm "${VISITED_FILE_NAME}"
+fi
+

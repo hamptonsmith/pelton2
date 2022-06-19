@@ -18,7 +18,8 @@ fi
 if ! which microk8s &>/dev/null; then
     eval $SNAP_CMD install microk8s --classic 
     eval $MICROK8S_CMD status --wait-ready
-    eval $MICROK8S_CMD enable dns dashboard ingress metallb registry
+    eval $MICROK8S_CMD enable dns dashboard ingress \
+            metallb:10.10.10.10-10.10.10.200 registry
 fi
 
 eval $INSTALL_CMD --mode 733 --owner root "$(dirname "$0")/*" /usr/bin/

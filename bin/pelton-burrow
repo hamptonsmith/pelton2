@@ -5,6 +5,7 @@ set -e
 APT_CMD=${APT_CMD:-apt}
 SNAP_CMD=${SNAP_CMD:-snap}
 MICROK8S_CMD=${KUBECTL_CMD:-microk8s}
+INSTALL_CMD=${INSTALL_CMD:-install}
 
 if ! which jq &>/dev/null; then
     eval $APT_CMD install jq
@@ -21,3 +22,6 @@ if ! which microk8s &>/dev/null; then
     eval $MICROK8S_CMD enable dns dashboard ingress metallb registry
 fi
 
+if ! which pelton-build-environment &>/dev/null; then
+    install --mode 733 --owner root "$(dirname "$0")/*" /usr/bin/
+fi

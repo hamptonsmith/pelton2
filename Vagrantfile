@@ -6,7 +6,7 @@ Vagrant.configure("2") do |config|
         apt update -yqq
         apt install -yqq git
         
-        
+        git clone git@github.com:hamptonsmith/pelton2.git
     PROVISION
     
     

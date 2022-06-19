@@ -88,7 +88,7 @@ SERVICE_IMAGE_NAME="${DOCKER_REGISTRY}/${IMAGE_NAME_BASE}"
 
 eval "$PRINT_SCRIPT_DKR_CMD" | DOCKER_BUILDKIT=1 eval $DOCKER_CMD build \
         --ssh default \
-        --tag "$IMAGE_NAME_BASE" \
+        --tag "$SCRIPT_ENV_IMAGE_NAME" \
         -f - . 1>&2
 
 HOST_PROJECT_DIR=${2:-.}

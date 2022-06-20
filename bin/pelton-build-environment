@@ -111,7 +111,7 @@ function runInScriptEnv() {
 if [[ -n "$BUILD_IMG_CMD" ]]; then
     runInScriptEnv \
             "set -- $1 ${ISOLATION} ${SERVICE_IMAGE_NAME} ; ${BUILD_IMG_CMD}"
-    eval ${DOCKER_CMD} push ${SERVICE_IMAGE_NAME}
+    eval ${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2
 fi
 
 if [[ -n "$PRINT_ENV_CMD" ]]; then

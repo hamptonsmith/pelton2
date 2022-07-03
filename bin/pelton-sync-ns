@@ -7,8 +7,31 @@ if [[ -z "$1" ]]; then
     exit 1
 fi
 
-microk8s kubectl -n $2 apply -f "$1"
+if [[ "$1" == "-" ]]; then
+    readarray MANIFEST
+    printf -v MANIFEST "%s" "${MANIFEST[@]}"
+else
+    MANIFEST=$(cat "$1")
+fi
 
-microk8s kubectl -n $2 apply -f "$1" --prune --all --dry-run=server \
-        | cut -d' ' -f1-2 | grep '^.* pruned$' | grep -v '^namespace/' \
-        | cut -d' ' -f1 | xargs --no-run-if-empty microk8s kubectl delete
+microk8s kubectl create namespace $2 || true
+
+echo -e "$MANIFEST"
+
+echo "Applying above manifest to namespace $2..."
+
+echo -e "$MANIFEST" | microk8s kubectl -n $2 apply -f -
+
+DELETING=$(echo -e "$MANIFEST" \
+        | microk8s kubectl -n $2 apply -f - --prune --all --dry-run=server \
+        | cut -d' ' -f1-2 \
+        | grep '^.* pruned$' \
+        | grep -v '^namespace/' \
+        | cut -d' ' -f1)
+
+if [[ -n "$DELETING" ]]; then
+    echo "Pruning:"
+    echo "$DELETING"
+
+    echo "$DELETING" | xargs --no-run-if-empty microk8s kubectl -n $2 delete
+fi

@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Adapted from https://unix.stackexchange.com/a/330776
+
+read LOW_BOUND HIGH_BOUND < /proc/sys/net/ipv4/ip_local_port_range
+RANGE=$(($HIGH_BOUND - $LOW_BOUND))
+
+while true; do
+    CANDIDATE=$[$LOW_BOUND + ($RANDOM % $RANGE)]
+    (echo -n "" >/dev/tcp/127.0.0.1/${CANDIDATE}) >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo $CANDIDATE
+        break
+    fi
+done

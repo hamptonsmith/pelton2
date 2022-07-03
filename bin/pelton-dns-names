@@ -1,0 +1,32 @@
+#!/bin/bash
+
+if [[ "$#" == "0" ]]; then
+    echo
+    exit 0
+fi
+
+DNS_NAME="$1"
+CONFIG_NAME="$2"
+ISO_NAME="$3"
+
+shift; shift; shift
+
+pelton-dns-names "$@" | while IFS= read -r VARIATION; do
+    if [[ -n "$VARIATION" ]]; then
+        VARIATION=".${VARIATION}"
+    fi
+
+    echo "${DNS_NAME}-${CONFIG_NAME}-${ISO_NAME}$VARIATION"
+
+    if [[ "$CONFIG_NAME" == "default" ]]; then
+        echo "${DNS_NAME}-${ISO_NAME}$VARIATION"
+    fi
+
+    if [[ "$ISO_NAME" == "niliso" ]]; then
+        echo "${DNS_NAME}-${CONFIG_NAME}$VARIATION"
+    fi
+
+    if [[ "$CONFIG_NAME" == "default" && "$ISO_NAME" == "niliso" ]]; then
+        echo "${DNS_NAME}$VARIATION"
+    fi
+done

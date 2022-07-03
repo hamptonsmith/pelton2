@@ -23,3 +23,11 @@ if ! which microk8s &>/dev/null; then
 fi
 
 eval $INSTALL_CMD --mode 755 --owner root "$(dirname "$0")/*" /usr/bin/
+eval $INSTALL_CMD \
+        --mode 755 \
+        --owner root \
+        --directory /usr/share/pelton
+eval $INSTALL_CMD \
+        --mode 644 \
+        --owner root \
+        "$(dirname "$0")/../data/*" /usr/share/pelton

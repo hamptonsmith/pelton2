@@ -1,0 +1,10 @@
+    - host: ${PELTON_DEP_DNS}.localhost
+      http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+                service:
+                    name: $PELTON_DEP_SERVICE_NAME
+                    port:
+                        number: $PELTON_DEP_SERVICE_PORT

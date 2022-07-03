@@ -39,6 +39,11 @@ fi
 TARGET_DIR=${2:-.}
 cd $TARGET_DIR
 
+if [[ ! -f pelton.json ]]; then
+    echo "$TARGET_DIR does not have a pelton.json file."
+    exit 1
+fi
+
 ISOLATION=${ISOLATION:-niliso}
 
 PROJECT_NAME=$(cat pelton.json | jq -r '.projectName')
@@ -47,58 +52,16 @@ PROJECT_DNS_NAME=$(cat pelton.json | jq -r '.projectDnsName');
 PROJECT_NAMED_CONFIG=$(cat pelton.json | jq -r ".configurations.$1")
 PROJECT_START=$(echo "$PROJECT_NAMED_CONFIG" | jq -r '.start // ""')
 
-pelton-build-environment $1 "$(pwd)" --isolation $ISOLATION \
+if [[ -n "$PROJECT_START" ]]; then
+    export PORT=$(pelton-find-port)
+    MAYBE_PORT="--port $PORT"
+fi
+
+pelton-build-environment $1 "$(pwd)" --isolation $ISOLATION $MAYBE_PORT \
 | pelton-sync-ns - \
         "$PELTON_DNS_PREFIX$PROJECT_DNS_NAME-$1-$ISOLATION"
 
 if [[ -n "$PROJECT_START" ]]; then
-    export PORT=$(pelton-find-port)
-
-    MANIFEST=$(echo "
-apiVersion: v1
-kind: Service
-metadata:
-  name: $PROJECT_DNS_NAME-$1-$ISOLATION-svc
-spec:
-  type: ExternalName
-  externalName: \"10.0.1.1\"
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: $PORT
-
----
-
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: $PROJECT_DNS_NAME-$1-$ISOLATION-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  rules:
-  "
-
-    pelton-dns-names $PROJECT_DNS_NAME $1 $ISOLATION \
-    | while IFS= read -r DNS; do
-        echo "
-            - host: ${DNS}.localhost
-              http:
-                paths:
-                - path: /
-                  pathType: Prefix
-                  backend:
-                    service:
-                      name: $PROJECT_DNS_NAME-$1-$ISOLATION-svc
-                      port:
-                        number: 80
-        "
-    done)
-
-    echo "$MANIFEST" | eval $KUBECTL_CMD \
-            -n "$PELTON_DNS_PREFIX$PROJECT_DNS_NAME-$1-$ISOLATION" \
-            apply -f -
-
     eval $PROJECT_START
 fi
 

@@ -14,7 +14,7 @@ else
     MANIFEST=$(cat "$1")
 fi
 
-microk8s kubectl create namespace $2 || true
+microk8s kubectl create namespace $2 2>/dev/null || true
 
 echo -e "$MANIFEST"
 

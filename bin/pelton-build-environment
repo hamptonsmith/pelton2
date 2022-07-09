@@ -21,11 +21,6 @@ while [[ $# -gt 0 ]]; do
         shift
         shift
         ;;
-    --port)
-        PORT="$2"
-        shift
-        shift
-        ;;
     --root)
         PELTON_ROOT_DIR="$2"
         PELTON_ROOT_CONFIG="$3"
@@ -129,19 +124,28 @@ if [[ -n "$BUILD_IMG_CMD" ]]; then
     runInScriptEnv \
             "set -- $1 ${ISOLATION} ${SERVICE_IMAGE_NAME} ; ${BUILD_IMG_CMD}"
     eval ${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2
+    REPO_DIGEST=$(eval ${DOCKER_CMD} inspect \
+            "--format='{{index .RepoDigests 0}}'" ${SERVICE_IMAGE_NAME}:latest)
 fi
 
-if [[ -n "$PRINT_ENV_CMD" && -z "$NEED_CLEANUP" ]]; then
+if [[ -n "$PRINT_ENV_CMD" ]]; then
     echo
     echo '---'
     echo "# pelton-build-environment $(pwd)"
     echo
 
-    runInScriptEnv \
-            "set -- $1 ${ISOLATION} ${SERVICE_IMAGE_NAME} ; ${PRINT_ENV_CMD}"
+    runInScriptEnv "
+        export PELTON_CONFIG_NAME=$1
+        export PELTON_ISO_KEY=${ISOLATION@Q}
+        export PELTON_IMAGE=${REPO_DIGEST@Q}
+        export PELTON_PROJ_HOST_DIR=\"$(realpath $(pwd))\"
+
+        set -- $1 ${ISOLATION@Q} ${SERVICE_IMAGE_NAME@Q}
+        ${PRINT_ENV_CMD}
+    "
 fi
 
-if [[ -n "$SERVICE_NAME" && -z "$NEED_CLEANUP" ]]; then
+if [[ -n "$SERVICE_NAME" ]]; then
     ROOT_PROJECT_DNS=$(pelton-read-config .projectDnsName $PELTON_ROOT_DIR)
 
     echo "---"
@@ -154,47 +158,20 @@ if [[ -n "$SERVICE_NAME" && -z "$NEED_CLEANUP" ]]; then
         cat /usr/share/pelton/dependency-ingress.yaml.fragment | envsubst
     )
 
-    pelton-dns-names $PROJECT_DNS_NAME $1 $ISOLATION \
-            $ROOT_PROJECT_DNS $PELTON_ROOT_CONFIG $PELTON_ROOT_ISO \
-            | while IFS= read -r DNS; do
+    DNS_NAMES_ARGS="$PROJECT_DNS_NAME $1 $ISOLATION"
 
+    if [[ -z "$NEED_CLEANUP" ]]; then
+        EXTRA_DNS_ARGS="$ROOT_PROJECT_DNS $PELTON_ROOT_CONFIG $PELTON_ROOT_ISO"
+        DNS_NAMES_ARGS="$DNS_NAMES_ARGS $EXTRA_DNS_ARGS"
+    fi
+
+    pelton-dns-names $DNS_NAMES_ARGS | while IFS= read -r DNS; do
         (
             export PELTON_DEP_DNS=$DNS
             export PELTON_DEP_SERVICE_NAME=${SERVICE_NAME}
             export PELTON_DEP_SERVICE_PORT=${SERVICE_PORT}
 
             cat /usr/share/pelton/dependency-ingress-rule.yaml.fragment \
-                    | envsubst
-        )
-    done
-
-    echo "..."
-fi
-
-if [[ -n "$NEED_CLEANUP" && -n "$PORT" ]]; then
-    ROOT_PROJECT_DNS=$(pelton-read-config .projectDnsName $PELTON_ROOT_DIR)
-
-    echo "---"
-
-    (
-        export PELTON_PROJ_DNS_NAME=$PROJECT_DNS_NAME
-        export PELTON_PROJ_CONFIG_NAME=$1
-        export PELTON_PROJ_ISO_KEY=$ISOLATION
-        export PELTON_TARGET_PORT=$PORT
-
-        cat /usr/share/pelton/target-ingress.yaml.fragment | envsubst
-    )
-
-    pelton-dns-names $PROJECT_DNS_NAME $1 $ISOLATION \
-            | while IFS= read -r DNS; do
-
-        (
-            export PELTON_PROJ_DNS_NAME=$PROJECT_DNS_NAME
-            export PELTON_PROJ_CONFIG_NAME=$1
-            export PELTON_PROJ_ISO_KEY=$ISOLATION
-            export PELTON_TARGET_DNS=$DNS
-
-            cat /usr/share/pelton/target-ingress-rule.yaml.fragment \
                     | envsubst
         )
     done

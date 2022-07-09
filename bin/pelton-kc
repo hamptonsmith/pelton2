@@ -1,0 +1,39 @@
+#!/bin/bash
+
+KUBECTL_CMD=${KUBECTL_CMD:-microk8s kubectl}
+PELTON_DNS_PREFIX=${PELTON_DNS_PREFIX:-"pltn-"}
+
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    if [[ "$1" = "--" ]]; then
+        CONFIG_NAME=${CONFIG_NAME:-default}
+        ISO_KEY=${ISO_KEY:-niliso}
+        shift
+        continue
+    fi
+
+    if [[ -z "$CONFIG_NAME" ]]; then
+        CONFIG_NAME="$1"
+        shift
+        continue
+    fi
+
+    if [[ -z "$ISO_KEY" ]]; then
+        ISO_KEY="$1"
+        shift
+        continue
+    fi
+
+    POSITIONAL_ARGS+=("$1") # save positional arg
+    shift # past argument
+done
+
+set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
+
+DNS_NAME=$(pelton-read-config .projectDnsName)
+
+set -x
+eval $KUBECTL_CMD \
+        -n "${PELTON_DNS_PREFIX}${DNS_NAME}-${CONFIG_NAME}-${ISO_KEY}" \
+        "${@}"

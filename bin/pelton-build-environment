@@ -48,7 +48,7 @@ done
 
 set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
 
-ISOLATION=${ISOLATION:-niliso}
+ISOLATION=${ISOLATION:-a}
 
 if [[ -z "$1" ]]; then
     echo 'Must specify a named configuration as the first argument.'

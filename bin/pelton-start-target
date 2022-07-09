@@ -44,7 +44,7 @@ if [[ ! -f pelton.json ]]; then
     exit 1
 fi
 
-ISOLATION=${ISOLATION:-niliso}
+ISOLATION=${ISOLATION:-a}
 
 PROJECT_NAME=$(cat pelton.json | jq -r '.projectName')
 PROJECT_DNS_NAME=$(cat pelton.json | jq -r '.projectDnsName');

@@ -22,11 +22,11 @@ pelton-dns-names "$@" | while IFS= read -r VARIATION; do
         echo "${DNS_NAME}-${ISO_NAME}$VARIATION"
     fi
 
-    if [[ "$ISO_NAME" == "niliso" ]]; then
+    if [[ "$ISO_NAME" == "a" ]]; then
         echo "${DNS_NAME}-${CONFIG_NAME}$VARIATION"
     fi
 
-    if [[ "$CONFIG_NAME" == "default" && "$ISO_NAME" == "niliso" ]]; then
+    if [[ "$CONFIG_NAME" == "default" && "$ISO_NAME" == "a" ]]; then
         echo "${DNS_NAME}$VARIATION"
     fi
 done

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+PELTON_STATE_DIR=${PELTON_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state/pelton}}
+
+echo "$PELTON_STATE_DIR/environment/namespaces/$1"

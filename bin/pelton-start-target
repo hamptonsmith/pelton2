@@ -8,6 +8,7 @@ PELTON_DNS_PREFIX=${PELTON_DNS_PREFIX:-"pltn-"}
 export DOCKER_CMD=${DOCKER_CMD:-docker}
 export DOCKER_REGISTRY=${DOCKER_REGISTRY:-localhost:32000}
 export KUBECTL_CMD=${KUBECTL_CMD:-microk8s kubectl}
+export PELTON_STATE_DIR=${PELTON_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state/pelton}}
 
 POSITIONAL_ARGS=()
 
@@ -15,6 +16,11 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --isolation)
         ISOLATION="$2"
+        shift
+        shift
+        ;;
+    --target-namespace)
+        TARGET_NAMESPACE="$2"
         shift
         shift
         ;;
@@ -45,21 +51,59 @@ if [[ ! -f pelton.json ]]; then
 fi
 
 ISOLATION=${ISOLATION:-a}
+TARGET_NAMESPACE=${TARGET_NAMESPACE:-default}
 
 PROJECT_NAME=$(cat pelton.json | jq -r '.projectName')
 PROJECT_DNS_NAME=$(cat pelton.json | jq -r '.projectDnsName');
 
 PROJECT_NAMED_CONFIG=$(cat pelton.json | jq -r ".configurations.$1")
 PROJECT_START=$(echo "$PROJECT_NAMED_CONFIG" | jq -r '.start // ""')
+PROJECT_PRINT_SERVICE_CMD=$( \
+        pelton-read-config ".configurations.$1.printService")
 
-pelton-build-environment $1 "$(pwd)" --isolation $ISOLATION \
-| pelton-sync-ns - \
-        "$PELTON_DNS_PREFIX$PROJECT_DNS_NAME-$1-$ISOLATION"
+function serviceManifest() {
+    echo
+    echo '---'
+    echo "# pelton-start-target $(pwd)"
+    echo
+
+    PELTON_ROOT_DIR=$(realpath $(pwd))
+    pelton-run-in-script-runner \
+            --config $1 \
+            --isolation $ISOLATION \
+            --root-dir ${PELTON_ROOT_DIR@Q} \
+            ${PROJECT_PRINT_SERVICE_CMD}
+
+    echo
+    echo '...'
+}
+
+NAMESPACE="$PELTON_DNS_PREFIX$PROJECT_DNS_NAME-$1-$ISOLATION"
+OUTPUT_FILE="$(pelton-ns-state-dir $NAMESPACE)/env.yaml"
+mkdir -p $(dirname "$OUTPUT_FILE")
+
+pelton-build-environment $1 "$(pwd)" --isolation $ISOLATION > "$OUTPUT_FILE"
+pelton-sync-ns "$NAMESPACE"
+
+if [[ -n "$PROJECT_PRINT_SERVICE_CMD" ]]; then
+    OUTPUT_FILE="$(pelton-ns-state-dir "$TARGET_NAMESPACE")/$NAMESPACE.yaml"
+    mkdir -p $(dirname "$OUTPUT_FILE")
+    serviceManifest $1 > "$OUTPUT_FILE"
+    pelton-sync-ns "$TARGET_NAMESPACE"
+fi
 
 PROJECT_SERVICE_NAME=$( \
         pelton-read-config ".configurations.$1.serviceName // \"\"")
 
 if [[ -n "$PROJECT_SERVICE_NAME" ]]; then
-    pelton-kc $1 $ISOLATION -- logs --follow svc/$PROJECT_SERVICE_NAME
-    echo Disconnected from logs. Service is still running!
+    trap true SIGINT
+    set +e
+    eval $KUBECTL_CMD logs --follow svc/$PROJECT_SERVICE_NAME
+    set -e
+fi
+
+if [[ -n "$PROJECT_PRINT_SERVICE_CMD" ]]; then
+    OUTPUT_FILE="$(pelton-ns-state-dir "$TARGET_NAMESPACE")/$NAMESPACE.yaml"
+    rm "$OUTPUT_FILE"
+    pelton-sync-ns "$TARGET_NAMESPACE"
 fi

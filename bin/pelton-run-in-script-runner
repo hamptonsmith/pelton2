@@ -1,0 +1,81 @@
+#!/bin/bash
+
+set -e
+
+export DOCKER_CMD=${DOCKER_CMD:-docker}
+export DOCKER_REGISTRY=${DOCKER_REGISTRY:-localhost:32000}
+
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    if [[ "${#POSITIONAL_ARGS[@]}" -gt 0 ]]; then
+        POSITIONAL_ARGS+=("$1")
+        shift
+    else
+        case $1 in
+            --config)
+                CONFIG_NAME="$2"
+                shift
+                shift
+                ;;
+            --isolation)
+                ISOLATION="$2"
+                shift
+                shift
+                ;;
+            --root-dir)
+                PELTON_ROOT_DIR="$2"
+                shift
+                shift
+                ;;
+            -*|--*)
+                echo "Unknown option $1"
+                exit 1
+                ;;
+            *)
+                POSITIONAL_ARGS+=("$1") # save positional arg
+                shift # past argument
+                ;;
+        esac
+    fi
+done
+
+set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
+
+if [[ ! -f pelton.json ]]; then
+    echo "$(pwd) does not have a pelton.json file."
+    exit 1
+fi
+
+PROJECT_DNS_NAME=$(pelton-read-config .projectDnsName);
+IMAGE_NAME_BASE="${PROJECT_DNS_NAME}-$CONFIG_NAME-${ISOLATION}"
+SCRIPT_ENV_IMAGE_NAME="${IMAGE_NAME_BASE}-psr"
+SERVICE_IMAGE_NAME="${DOCKER_REGISTRY}/${IMAGE_NAME_BASE}"
+
+eval $(pelton-read-config .printScriptRunnerDockerfile) \
+| DOCKER_BUILDKIT=1 eval $DOCKER_CMD build \
+        --ssh default \
+        --tag "$SCRIPT_ENV_IMAGE_NAME" \
+        -f - . 1>&2
+
+PROJECT_DIR=$(realpath $(pwd))
+PELTON_ROOT_DIR=${PELTON_ROOT_DIR:-$PROJECT_DIR}
+ISOLATION=${ISOLATION:-a}
+CONFIG_NAME=${CONFIG_NAME:-default}
+
+ALL_ARGS="$*"
+
+eval $DOCKER_CMD run \
+        --volume "${PROJECT_DIR}:/project" \
+        --workdir /project \
+        --volume "${PELTON_ROOT_DIR:-$PROJECT_DIR}:/pelton-root" \
+        --volume /var/run/docker.sock:/var/run/docker.sock \
+        --volume ${SSH_AUTH_SOCK}:/ssh-auth-sock \
+        -e SSH_AUTH_SOCK=/ssh-auth-sock \
+        -e PELTON_CONFIG_NAME=$CONFIG_NAME \
+        -e PELTON_ISO_KEY=$ISOLATION \
+        -e PELTON_IMAGE_TAG="$SERVICE_IMAGE_NAME" \
+        -e PELTON_PROJ_HOST_DIR="$(realpath $(pwd))" \
+        -e DOCKER_REGISTRY="$DOCKER_REGISTRY" \
+        $SCRIPT_ENV_IMAGE_NAME \
+        sh -c ${ALL_ARGS@Q}

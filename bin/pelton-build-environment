@@ -88,7 +88,10 @@ echo "$PROJECT_DNS_NAME $1 $ISOLATION" >> "$VISITED_FILE_NAME"
 1>&2 echo "Building $PROJECT_NAME environment..."
 
 CONFIGURATION_JSON=$(cat pelton.json | jq -c ".configurations.$1")
-PRINT_ENV_CMD=$(echo "$CONFIGURATION_JSON" | jq -r '.printEnvironment // ""')
+PRINT_STATIC_DEPS_CMD=$( \
+        echo "$CONFIGURATION_JSON" | jq -r '.printStaticDependencies // ""')
+PRINT_SERVICE_CMD=$( \
+        echo "$CONFIGURATION_JSON" | jq -r '.printService // ""')
 BUILD_IMG_CMD=$(echo "$CONFIGURATION_JSON" | jq -r '.buildImage // ""')
 SERVICE_NAME=$(echo "$CONFIGURATION_JSON" | jq -r '.serviceName // ""')
 SERVICE_PORT=$(echo "$CONFIGURATION_JSON" | jq -r '.servicePort // ""')
@@ -97,52 +100,42 @@ IMAGE_NAME_BASE="${PROJECT_DNS_NAME}-$1-${ISOLATION}"
 SCRIPT_ENV_IMAGE_NAME="${IMAGE_NAME_BASE}-psr"
 SERVICE_IMAGE_NAME="${DOCKER_REGISTRY}/${IMAGE_NAME_BASE}"
 
-eval "$PRINT_SCRIPT_DKR_CMD" | DOCKER_BUILDKIT=1 eval $DOCKER_CMD build \
-        --ssh default \
-        --tag "$SCRIPT_ENV_IMAGE_NAME" \
-        -f - . 1>&2
-
-HOST_PROJECT_DIR=${2:-.}
-function runInScriptEnv() {
-    eval $DOCKER_CMD run \
-            --volume "$(realpath $(pwd))":/project \
-            --volume "${PELTON_ROOT_DIR}":/pelton-root \
-            --volume /var/run/docker.sock:/var/run/docker.sock \
-            --volume ${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK} \
-            -e SSH_AUTH_SOCK=${SSH_AUTH_SOCK} \
-            --workdir /project \
-            -e PELTON_CONFIG_NAME=$CONFIG_NAME \
-            -e PELTON_ISO_KEY=$ISOLATION \
-            -e PELTON_IMAGE_TAG=$SERVICE_IMAGE_NAME \
-            -e PELTON_ROOT_DIR=${PELTON_ROOT_DIR@Q} \
-            -e DOCKER_REGISTRY=${DOCKER_REGISTRY} \
-            $SCRIPT_ENV_IMAGE_NAME \
-            sh -c ${1@Q}
-}
-
 if [[ -n "$BUILD_IMG_CMD" ]]; then
-    runInScriptEnv \
-            "set -- $1 ${ISOLATION} ${SERVICE_IMAGE_NAME} ; ${BUILD_IMG_CMD}"
+    pelton-run-in-script-runner \
+            --config $CONFIG_NAME \
+            --isolation $ISOLATION \
+            --root-dir ${PELTON_ROOT_DIR@Q} \
+            ${BUILD_IMG_CMD}
+
     eval ${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2
     REPO_DIGEST=$(eval ${DOCKER_CMD} inspect \
             "--format='{{index .RepoDigests 0}}'" ${SERVICE_IMAGE_NAME}:latest)
 fi
 
-if [[ -n "$PRINT_ENV_CMD" ]]; then
+if [[ -n "$PRINT_STATIC_DEPS_CMD" ]]; then
     echo
     echo '---'
     echo "# pelton-build-environment $(pwd)"
     echo
 
-    runInScriptEnv "
-        export PELTON_CONFIG_NAME=$1
-        export PELTON_ISO_KEY=${ISOLATION@Q}
-        export PELTON_IMAGE=${REPO_DIGEST@Q}
-        export PELTON_PROJ_HOST_DIR=\"$(realpath $(pwd))\"
+    pelton-run-in-script-runner \
+            --config $CONFIG_NAME \
+            --isolation $ISOLATION \
+            --root-dir ${PELTON_ROOT_DIR@Q} \
+            ${PRINT_STATIC_DEPS_CMD}
+fi
 
-        set -- $1 ${ISOLATION@Q} ${SERVICE_IMAGE_NAME@Q}
-        ${PRINT_ENV_CMD}
-    "
+if [[ -z "$NEED_CLEANUP" && -n "$PRINT_SERVICE_CMD" ]]; then
+    echo
+    echo '---'
+    echo "# pelton-build-environment $(pwd)"
+    echo
+
+    pelton-run-in-script-runner \
+            --config $CONFIG_NAME \
+            --isolation $ISOLATION \
+            --root-dir ${PELTON_ROOT_DIR@Q} \
+            ${PRINT_SERVICE_CMD}
 fi
 
 if [[ -n "$SERVICE_NAME" ]]; then
@@ -179,13 +172,13 @@ if [[ -n "$SERVICE_NAME" ]]; then
     echo "..."
 fi
 
-echo "$CONFIGURATION_JSON" | jq -r '.dependencies // {} | keys[]' \
+echo "$CONFIGURATION_JSON" | jq -r '.dynamicDependencies // {} | keys[]' \
 | while IFS= read -r DEP; do
     if [[ -z "$DEP" ]]; then
         continue
     fi
 
-    DEP_CONFIG=$(echo "$CONFIGURATION_JSON" | jq -c ".dependencies[\"$DEP\"]")
+    DEP_CONFIG=$(echo "$CONFIGURATION_JSON" | jq -c ".dynamicDependencies[\"$DEP\"]")
     DEP_NAVIGATE_CMD=$(echo "$DEP_CONFIG" | jq -r '.navigate')
     DEP_CONFIG_NAME=$(echo "$DEP_CONFIG" | jq -r '.configuration // "default"')
     DEP_ISO_KEY=$(echo "$DEP_CONFIG" | jq -r ".isolation // \"$ISOLATION\"")

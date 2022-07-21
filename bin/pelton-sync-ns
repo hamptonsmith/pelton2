@@ -2,36 +2,57 @@
 
 set -e
 
+export KUBECTL_CMD=${KUBECTL_CMD:-microk8s kubectl}
+
 if [[ -z "$1" ]]; then
-    echo 'Must provide environment manifest.'
+    echo 'Must provide at least one namespace.'
     exit 1
 fi
 
-if [[ "$1" == "-" ]]; then
-    readarray MANIFEST
-    printf -v MANIFEST "%s" "${MANIFEST[@]}"
-else
-    MANIFEST=$(cat "$1")
-fi
+for NS in "$@"; do
+    MANIFEST=$(find "$(pelton-ns-state-dir $NS)"/*.yaml \
+            | xargs --no-run-if-empty cat)
 
-microk8s kubectl create namespace $2 2>/dev/null || true
+    echo -e "$MANIFEST"
 
-echo -e "$MANIFEST"
+    echo "Applying above manifest to namespace $NS..."
 
-echo "Applying above manifest to namespace $2..."
+    eval $KUBECTL_CMD create namespace $NS 2>/dev/null || true
 
-echo -e "$MANIFEST" | microk8s kubectl -n $2 apply -f -
+    if [[ -n "$MANIFEST" ]]; then
+        echo -e "$MANIFEST" | microk8s kubectl -n $NS apply -f -
 
-DELETING=$(echo -e "$MANIFEST" \
-        | microk8s kubectl -n $2 apply -f - --prune --all --dry-run=server \
-        | cut -d' ' -f1-2 \
-        | grep '^.* pruned$' \
-        | grep -v '^namespace/' \
-        | cut -d' ' -f1)
+        DELETING=$(echo -e "$MANIFEST" \
+                | eval $KUBECTL_CMD -n $NS apply \
+                        -f - \
+                        --prune \
+                        --all \
+                        --dry-run=server \
+                | cut -d' ' -f1-2 \
+                | grep '^.* pruned$' \
+                | grep -v '^namespace/' \
+                | cut -d' ' -f1)
+    else
+        DELETING=$(
+            eval $KUBECTL_CMD -n $NS get --no-headers all \
+            | cut -d' ' -f1
+        )
+    fi
 
-if [[ -n "$DELETING" ]]; then
-    echo "Pruning:"
-    echo "$DELETING"
+    if [[ -n "$DELETING" ]]; then
+        DND_PATH="${XDG_CONFIG_HOME:-$HOME/.config}"
+        DND_PATH="$DND_PATH/pelton/environment/namespaces/$NS/do-not-delete"
 
-    echo "$DELETING" | xargs --no-run-if-empty microk8s kubectl -n $2 delete
-fi
+        if [[ -f "$DND_PATH" ]]; then
+            for PATTERN in $(cat "$DND_PATH"); do
+                DELETING=$(echo "$DELETING" | grep -v "$PATTERN")
+            done
+        fi
+
+        echo "Pruning:"
+        echo "$DELETING"
+
+        echo "$DELETING" | xargs --no-run-if-empty \
+                $KUBECTL_CMD -n $NS delete
+    fi
+done

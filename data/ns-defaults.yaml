@@ -1,0 +1,9 @@
+---
+# Added by pelton
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: pelton-config
+data: {}
+...

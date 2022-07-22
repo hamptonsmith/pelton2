@@ -96,9 +96,16 @@ PROJECT_SERVICE_NAME=$( \
         pelton-read-config ".configurations.$1.serviceName // \"\"")
 
 if [[ -n "$PROJECT_SERVICE_NAME" ]]; then
+    # Wait for the service to become available.
+    TASK_NAME="waiting for svc/$PROJECT_SERVICE_NAME"
+    TASK_NAME="$TASK_NAME in namespace $NS to become healthy"
+    pelton-retry "$TASK_NAME" eval $KUBECTL_CMD -n "$TARGET_NAMESPACE" \
+            logs svc/$PROJECT_SERVICE_NAME &>/dev/null
+
     trap true SIGINT
     set +e
-    eval $KUBECTL_CMD logs --follow svc/$PROJECT_SERVICE_NAME
+    eval $KUBECTL_CMD -n "$TARGET_NAMESPACE" \
+            logs --follow svc/$PROJECT_SERVICE_NAME
     set -e
 fi
 

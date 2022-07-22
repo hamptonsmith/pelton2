@@ -1,0 +1,12 @@
+#!/bin/bash
+
+TIMEOUT=30
+until eval "${@:2}"; do
+    if [[ "$TIMEOUT" -lt "1" ]]; then
+        echo "Timed out $1."
+        exit 1
+    fi
+
+    sleep 2
+    TIMEOUT=$((TIMEOUT - 2))
+done

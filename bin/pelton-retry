@@ -1,9 +1,44 @@
 #!/bin/bash
 
-TIMEOUT=30
-until eval "${@:2}"; do
+POSITIONAL_ARGS=()
+
+TASK="$1"
+shift
+
+while [[ $# -gt 0 ]]; do
+    if [[ "${#POSITIONAL_ARGS[@]}" -gt 0 ]]; then
+        POSITIONAL_ARGS+=("$1")
+        shift
+    else
+        case $1 in
+            --task)
+                TASK="$2"
+                shift
+                shift
+                ;;
+            --timeout)
+                TIMEOUT="$2"
+                shift
+                shift
+                ;;
+            -*|--*)
+                echo "Unknown option $1"
+                exit 1
+                ;;
+            *)
+                POSITIONAL_ARGS+=("$1") # save positional arg
+                shift # past argument
+                ;;
+        esac
+    fi
+done
+
+set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
+
+TIMEOUT=${TIMEOUT:-30}
+until eval "${@}"; do
     if [[ "$TIMEOUT" -lt "1" ]]; then
-        echo "Timed out $1."
+        1>&2 echo "Timed out $TASK."
         exit 1
     fi
 

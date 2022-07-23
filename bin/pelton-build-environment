@@ -15,48 +15,42 @@ export DOCKER_REGISTRY=${DOCKER_REGISTRY:-localhost:32000}
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
-  case $1 in
-    --isolation)
-        ISOLATION="$2"
-        shift
-        shift
-        ;;
-    --root)
-        PELTON_ROOT_DIR="$2"
-        PELTON_ROOT_CONFIG="$3"
-        PELTON_ROOT_ISO="$4"
-        shift
-        shift
-        shift
-        shift
-        ;;
-    --visited-file)
-        VISITED_FILE_NAME="$2"
-        shift
-        shift
-        ;;
-    -*|--*)
-      echo "Unknown option $1"
-      exit 1
-      ;;
-    *)
-      POSITIONAL_ARGS+=("$1") # save positional arg
-      shift # past argument
-      ;;
-  esac
+    case $1 in
+        --config)
+            CONFIG_NAME="$2"
+            shift 2
+            ;;
+        --isolation)
+            ISOLATION="$2"
+            shift 2
+            ;;
+        --root)
+            PELTON_ROOT_DIR="$2"
+            PELTON_ROOT_CONFIG="$3"
+            PELTON_ROOT_ISO="$4"
+            shift 4
+            ;;
+        --visited-file)
+            VISITED_FILE_NAME="$2"
+            shift 2
+            ;;
+        -*|--*)
+            echo "Unknown option $1"
+            exit 1
+            ;;
+        *)
+            POSITIONAL_ARGS+=("$1")
+            shift
+            ;;
+    esac
 done
 
 set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
 
 ISOLATION=${ISOLATION:-a}
+CONFIG_NAME=${CONFIG_NAME:-default}
 
-if [[ -z "$1" ]]; then
-    echo 'Must specify a named configuration as the first argument.'
-    exit 1
-fi
-CONFIG_NAME="$1"
-
-cd ${2:-.}
+cd ${1:-.}
 if [[ ! -f pelton.json ]]; then
     echo "$(pwd) does not have a pelton.json file."
     exit 1
@@ -64,7 +58,7 @@ fi
 
 if [[ -z "$PELTON_ROOT_DIR" ]]; then
     PELTON_ROOT_DIR=$(pwd)
-    PELTON_ROOT_CONFIG="$1"
+    PELTON_ROOT_CONFIG="$CONFIG_NAME"
     PELTON_ROOT_ISO="$ISOLATION"
 fi
 
@@ -79,15 +73,15 @@ if [[ -z "$VISITED_FILE_NAME" ]]; then
 fi
 
 while read -r SKIP; do
-    if [[ "$SKIP" == "$PROJECT_DNS_NAME $1 $ISOLATION" ]]; then
+    if [[ "$SKIP" == "$PROJECT_DNS_NAME $CONFIG_NAME $ISOLATION" ]]; then
         exit 0
     fi
 done < "$VISITED_FILE_NAME"
-echo "$PROJECT_DNS_NAME $1 $ISOLATION" >> "$VISITED_FILE_NAME"
+echo "$PROJECT_DNS_NAME $CONFIG_NAME $ISOLATION" >> "$VISITED_FILE_NAME"
 
 1>&2 echo "Building $PROJECT_NAME environment..."
 
-CONFIGURATION_JSON=$(cat pelton.json | jq -c ".configurations.$1")
+CONFIGURATION_JSON=$(cat pelton.json | jq -c ".configurations.$CONFIG_NAME")
 PRINT_STATIC_DEPS_CMD=$( \
         echo "$CONFIGURATION_JSON" | jq -r '.printStaticDependencies // ""')
 PRINT_SERVICE_CMD=$( \
@@ -96,7 +90,7 @@ BUILD_IMG_CMD=$(echo "$CONFIGURATION_JSON" | jq -r '.buildImage // ""')
 SERVICE_NAME=$(echo "$CONFIGURATION_JSON" | jq -r '.serviceName // ""')
 SERVICE_PORT=$(echo "$CONFIGURATION_JSON" | jq -r '.servicePort // ""')
 
-IMAGE_NAME_BASE="${PROJECT_DNS_NAME}-$1-${ISOLATION}"
+IMAGE_NAME_BASE="${PROJECT_DNS_NAME}-${CONFIG_NAME}-${ISOLATION}"
 SCRIPT_ENV_IMAGE_NAME="${IMAGE_NAME_BASE}-psr"
 SERVICE_IMAGE_NAME="${DOCKER_REGISTRY}/${IMAGE_NAME_BASE}"
 
@@ -149,13 +143,13 @@ if [[ -n "$SERVICE_NAME" ]]; then
 
     (
         export PELTON_PROJ_DNS_NAME=$PROJECT_DNS_NAME
-        export PELTON_PROJ_CONFIG_NAME=$1
+        export PELTON_PROJ_CONFIG_NAME=$CONFIG_NAME
         export PELTON_PROJ_ISO_KEY=$ISOLATION
 
         cat /usr/share/pelton/dependency-ingress.yaml.fragment | envsubst
     )
 
-    DNS_NAMES_ARGS="$PROJECT_DNS_NAME $1 $ISOLATION"
+    DNS_NAMES_ARGS="$PROJECT_DNS_NAME $CONFIG_NAME $ISOLATION"
 
     if [[ -z "$NEED_CLEANUP" ]]; then
         EXTRA_DNS_ARGS="$ROOT_PROJECT_DNS $PELTON_ROOT_CONFIG $PELTON_ROOT_ISO"
@@ -189,8 +183,8 @@ echo "$CONFIGURATION_JSON" | jq -r '.dynamicDependencies // {} | keys[]' \
 
     DEP_RECURSIVE_CMD="
         set -e
-        set -- $1 ${ISOLATION@Q} ${IMAGE_NAME_BASE@Q} ${PELTON_ROOT_DIR@Q}
-        export PELTON_CONFIG_NAME=$1
+        set -- ${CONFIG_NAME} ${ISOLATION@Q} ${IMAGE_NAME_BASE@Q} ${PELTON_ROOT_DIR@Q}
+        export PELTON_CONFIG_NAME=${CONFIG_NAME}
         export PELTON_ISO_KEY=${ISOLATION@Q}
         export PELTON_IMAGE_TAG=${IMAGE_NAME_BASE@Q}
         export PELTON_ROOT_DIR=${PELTON_ROOT_DIR@Q}
@@ -198,7 +192,7 @@ echo "$CONFIGURATION_JSON" | jq -r '.dynamicDependencies // {} | keys[]' \
         $0 --root ${PELTON_ROOT_DIR@Q} ${PELTON_ROOT_CONFIG@Q} \
                     ${PELTON_ROOT_ISO@Q} \
                 --visited-file ${VISITED_FILE_NAME@Q} \
-                --isolation ${DEP_ISO_KEY@Q} ${DEP_CONFIG_NAME@Q}
+                --isolation ${DEP_ISO_KEY@Q} --config ${DEP_CONFIG_NAME@Q}
     "
 
     bash -c "$DEP_RECURSIVE_CMD"

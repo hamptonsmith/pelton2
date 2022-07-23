@@ -13,36 +13,37 @@ export PELTON_STATE_DIR=${PELTON_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
-  case $1 in
-    --isolation)
-        ISOLATION="$2"
-        shift
-        shift
-        ;;
-    --target-namespace)
-        TARGET_NAMESPACE="$2"
-        shift
-        shift
-        ;;
-    -*|--*)
-      echo "Unknown option $1"
-      exit 1
-      ;;
-    *)
-      POSITIONAL_ARGS+=("$1") # save positional arg
-      shift # past argument
-      ;;
-  esac
+    case $1 in
+        --config)
+            CONFIG_NAME="$2"
+            shift 2
+            ;;
+        --isolation)
+            ISOLATION="$2"
+            shift 2
+            ;;
+        --target-namespace)
+            TARGET_NAMESPACE="$2"
+            shift 2
+            ;;
+        -*|--*)
+            echo "Unknown option $1"
+            exit 1
+            ;;
+        *)
+            POSITIONAL_ARGS+=("$1") # save positional arg
+            shift # past argument
+            ;;
+    esac
 done
 
 set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
 
-if [[ -z "$1" ]]; then
-    echo 'Must specify a named configuration as the first argument.'
-    exit 1
-fi
+CONFIG_NAME=${CONFIG_NAME:-default}
+ISOLATION=${ISOLATION:-a}
+TARGET_NAMESPACE=${TARGET_NAMESPACE:-default}
 
-TARGET_DIR=${2:-.}
+TARGET_DIR=${1:-.}
 cd $TARGET_DIR
 
 if [[ ! -f pelton.json ]]; then
@@ -50,16 +51,13 @@ if [[ ! -f pelton.json ]]; then
     exit 1
 fi
 
-ISOLATION=${ISOLATION:-a}
-TARGET_NAMESPACE=${TARGET_NAMESPACE:-default}
-
 PROJECT_NAME=$(cat pelton.json | jq -r '.projectName')
 PROJECT_DNS_NAME=$(cat pelton.json | jq -r '.projectDnsName');
 
-PROJECT_NAMED_CONFIG=$(cat pelton.json | jq -r ".configurations.$1")
+PROJECT_NAMED_CONFIG=$(cat pelton.json | jq -r ".configurations.$CONFIG_NAME")
 PROJECT_START=$(echo "$PROJECT_NAMED_CONFIG" | jq -r '.start // ""')
 PROJECT_PRINT_SERVICE_CMD=$( \
-        pelton-read-config ".configurations.$1.printService")
+        pelton-read-config ".configurations.$CONFIG_NAME.printService")
 
 function serviceManifest() {
     echo
@@ -69,7 +67,7 @@ function serviceManifest() {
 
     PELTON_ROOT_DIR=$(realpath $(pwd))
     pelton-run-in-script-runner \
-            --config $1 \
+            --config $CONFIG_NAME \
             --isolation $ISOLATION \
             --root-dir ${PELTON_ROOT_DIR@Q} \
             ${PROJECT_PRINT_SERVICE_CMD}
@@ -78,22 +76,23 @@ function serviceManifest() {
     echo '...'
 }
 
-NAMESPACE="$PELTON_DNS_PREFIX$PROJECT_DNS_NAME-$1-$ISOLATION"
+NAMESPACE="$PELTON_DNS_PREFIX$PROJECT_DNS_NAME-$CONFIG_NAME-$ISOLATION"
 OUTPUT_FILE="$(pelton-ns-state-dir $NAMESPACE)/env.yaml"
 mkdir -p $(dirname "$OUTPUT_FILE")
 
-pelton-build-environment $1 "$(pwd)" --isolation $ISOLATION > "$OUTPUT_FILE"
+pelton-build-environment --config $CONFIG_NAME --isolation $ISOLATION \
+        > "$OUTPUT_FILE"
 pelton-sync-ns "$NAMESPACE"
 
 if [[ -n "$PROJECT_PRINT_SERVICE_CMD" ]]; then
     OUTPUT_FILE="$(pelton-ns-state-dir "$TARGET_NAMESPACE")/$NAMESPACE.yaml"
     mkdir -p $(dirname "$OUTPUT_FILE")
-    serviceManifest $1 > "$OUTPUT_FILE"
+    serviceManifest $CONFIG_NAME > "$OUTPUT_FILE"
     pelton-sync-ns "$TARGET_NAMESPACE"
 fi
 
 PROJECT_SERVICE_NAME=$( \
-        pelton-read-config ".configurations.$1.serviceName // \"\"")
+        pelton-read-config ".configurations.$CONFIG_NAME.serviceName // \"\"")
 
 if [[ -n "$PROJECT_SERVICE_NAME" ]]; then
     # Wait for the service to become available.

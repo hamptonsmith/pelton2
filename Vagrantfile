@@ -38,6 +38,12 @@ Vagrant.configure("2") do |config|
                     > /home/vagrant/.bashrc
         fi
 
+        # Docker without sudo
+        if [[ -z "$(getent group docker)" ]]; then
+            groupadd docker
+        fi
+        usermod -aG docker vagrant
+
         DND_FILE="/home/vagrant/.config/pelton/environment/namespaces/default"
         DND_FILE="$DND_FILE/do-not-delete"
         if [[ ! -f "$DND_FILE" ]]; then

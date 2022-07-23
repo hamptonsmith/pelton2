@@ -95,7 +95,7 @@ SCRIPT_ENV_IMAGE_NAME="${IMAGE_NAME_BASE}-psr"
 SERVICE_IMAGE_NAME="${DOCKER_REGISTRY}/${IMAGE_NAME_BASE}"
 
 if [[ -n "$BUILD_IMG_CMD" ]]; then
-    pelton-retry "waiting for registry at $DOCKER_REGISTRY" --timeout 60 \
+    pelton-retry "waiting for registry at $DOCKER_REGISTRY" --timeout 300 \
             "curl --fail-with-body -X GET \"$DOCKER_REGISTRY/v2/\" &>/dev/null"
 
     pelton-run-in-script-runner \

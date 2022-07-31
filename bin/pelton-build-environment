@@ -104,7 +104,10 @@ if [[ -n "$BUILD_IMG_CMD" ]]; then
             --root-dir ${PELTON_ROOT_DIR@Q} \
             ${BUILD_IMG_CMD}
 
-    eval ${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2
+    if ! eval ${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2; then
+        1>&2 'Are you sure you tagged it with $PELTON_IMAGE_TAG ?'
+        exit 1
+    fi
 
     REPO_DIGEST=$(eval ${DOCKER_CMD} inspect \
             "--format='{{index .RepoDigests 0}}'" ${SERVICE_IMAGE_NAME}:latest)
@@ -136,7 +139,7 @@ if [[ -z "$NEED_CLEANUP" && -n "$PRINT_SERVICE_CMD" ]]; then
             ${PRINT_SERVICE_CMD}
 fi
 
-if [[ -n "$SERVICE_NAME" ]]; then
+if [[ -n "$SERVICE_NAME" && -z "$NEED_CLEANUP" ]]; then
     ROOT_PROJECT_DNS=$(pelton-read-config .projectDnsName $PELTON_ROOT_DIR)
 
     echo "---"
@@ -150,11 +153,8 @@ if [[ -n "$SERVICE_NAME" ]]; then
     )
 
     DNS_NAMES_ARGS="$PROJECT_DNS_NAME $CONFIG_NAME $ISOLATION"
-
-    if [[ -z "$NEED_CLEANUP" ]]; then
-        EXTRA_DNS_ARGS="$ROOT_PROJECT_DNS $PELTON_ROOT_CONFIG $PELTON_ROOT_ISO"
-        DNS_NAMES_ARGS="$DNS_NAMES_ARGS $EXTRA_DNS_ARGS"
-    fi
+    EXTRA_DNS_ARGS="$ROOT_PROJECT_DNS $PELTON_ROOT_CONFIG $PELTON_ROOT_ISO"
+    DNS_NAMES_ARGS="$DNS_NAMES_ARGS $EXTRA_DNS_ARGS"
 
     pelton-dns-names $DNS_NAMES_ARGS | while IFS= read -r DNS; do
         (

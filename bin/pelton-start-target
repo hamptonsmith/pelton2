@@ -62,8 +62,6 @@ PROJECT_SERVICE_NAME=$( \
         pelton-read-config ".configurations.$CONFIG_NAME.serviceName // \"\"")
 PROJECT_SERVICE_PORT=$( \
         pelton-read-config ".configurations.$CONFIG_NAME.servicePort // \"\"")
-PROJECT_POD_SELECTOR=$( \
-        pelton-read-config ".configurations.$CONFIG_NAME.podSelector // \"\"")
 
 function serviceManifest() {
     echo
@@ -140,9 +138,15 @@ if [[ -n "$PROJECT_PRINT_SERVICE_CMD" || -n "$PROJECT_SERVICE_NAME" ]]; then
 fi
 
 if [[ -n "$PROJECT_SERVICE_NAME" ]]; then
+    POD_SELECTOR_LINES=$( \
+        eval "$KUBECTL_CMD -n $TARGET_NAMESPACE get svc/$PROJECT_SERVICE_NAME \
+                -o=go-template='{{range \$key, \$value := .spec.selector}}{{printf \"%s=%s\\n\" \$key \$value}}{{end}}'" \
+    )
+    POD_SELECTOR=$(echo -en $POD_SELECTOR_LINES | tr '\n' ',')
+
     LIST_PODS="eval $KUBECTL_CMD -n $TARGET_NAMESPACE get pods"
     LIST_PODS="$LIST_PODS --field-selector status.phase=Running"
-    LIST_PODS="$LIST_PODS --selector '$PROJECT_POD_SELECTOR'"
+    LIST_PODS="$LIST_PODS --selector '$POD_SELECTOR'"
     LIST_PODS="$LIST_PODS -o=jsonpath='{.items[*].metadata.name}'"
     LIST_PODS="$LIST_PODS | tr ' ' ','"
 

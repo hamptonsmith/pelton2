@@ -62,6 +62,8 @@ PROJECT_SERVICE_NAME=$( \
         pelton-read-config ".configurations.$CONFIG_NAME.serviceName // \"\"")
 PROJECT_SERVICE_PORT=$( \
         pelton-read-config ".configurations.$CONFIG_NAME.servicePort // \"\"")
+PROJECT_POD_SELECTOR=$( \
+        pelton-read-config ".configurations.$CONFIG_NAME.podSelector // \"\"")
 
 function serviceManifest() {
     echo
@@ -127,24 +129,29 @@ if [[ -n "$PROJECT_PRINT_SERVICE_CMD" || -n "$PROJECT_SERVICE_NAME" ]]; then
     mkdir -p $(dirname "$OUTPUT_FILE")
     serviceManifest $CONFIG_NAME > "$OUTPUT_FILE"
     pelton-sync-ns "$TARGET_NAMESPACE"
+
+    function cleanup() {
+        OUTPUT_FILE="$(pelton-ns-state-dir "$TARGET_NAMESPACE")/$NAMESPACE.yaml"
+        rm "$OUTPUT_FILE"
+        pelton-sync-ns "$TARGET_NAMESPACE"
+    }
+
+    trap cleanup EXIT
 fi
 
 if [[ -n "$PROJECT_SERVICE_NAME" ]]; then
+    LIST_PODS="eval $KUBECTL_CMD -n $TARGET_NAMESPACE get pods"
+    LIST_PODS="$LIST_PODS --field-selector status.phase=Running"
+    LIST_PODS="$LIST_PODS --selector '$PROJECT_POD_SELECTOR'"
+    LIST_PODS="$LIST_PODS -o=jsonpath='{.items[*].metadata.name}'"
+    LIST_PODS="$LIST_PODS | tr ' ' ','"
+
     # Wait for the service to become available.
     TASK_NAME="waiting for svc/$PROJECT_SERVICE_NAME"
-    TASK_NAME="$TASK_NAME in namespace $NS to become healthy"
-    pelton-retry "$TASK_NAME" eval $KUBECTL_CMD -n "$TARGET_NAMESPACE" \
-            logs svc/$PROJECT_SERVICE_NAME &>/dev/null
+    TASK_NAME="$TASK_NAME in namespace $NS to have running pods"
+    pelton-retry "$TASK_NAME" "$LIST_PODS | grep '.\+'" &>/dev/null
 
-    trap true SIGINT
     set +e
-    eval $KUBECTL_CMD -n "$TARGET_NAMESPACE" \
-            logs --follow svc/$PROJECT_SERVICE_NAME
+    kubetail $(eval $LIST_PODS) -n $TARGET_NAMESPACE
     set -e
-fi
-
-if [[ -n "$PROJECT_PRINT_SERVICE_CMD" ]]; then
-    OUTPUT_FILE="$(pelton-ns-state-dir "$TARGET_NAMESPACE")/$NAMESPACE.yaml"
-    rm "$OUTPUT_FILE"
-    pelton-sync-ns "$TARGET_NAMESPACE"
 fi

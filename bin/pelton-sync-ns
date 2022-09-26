@@ -18,17 +18,17 @@ function nsManifest() {
 }
 
 for NS in "$@"; do
-    MANIFEST=$(nsManifest "$1")
+    TMP_FILE=$(mktemp)
+    nsManifest "$1" > "$TMP_FILE"
 
-    echo -e "$MANIFEST"
-
-    echo "Applying above manifest to namespace $NS..."
+    echo "Updating namespace $NS..."
 
     eval $KUBECTL_CMD create namespace $NS 2>/dev/null || true
 
-    echo -e "$MANIFEST" | microk8s kubectl -n $NS apply -f -
+    pelton-scroll-output \
+            "cat '$TMP_FILE' | microk8s kubectl -n $NS apply -f -"
 
-    DELETING=$(echo -e "$MANIFEST" \
+    DELETING=$(cat "$TMP_FILE" \
             | eval $KUBECTL_CMD -n $NS apply \
                     -f - \
                     --prune \
@@ -49,10 +49,9 @@ for NS in "$@"; do
             done
         fi
 
-        echo "Pruning:"
-        echo "$DELETING"
+        echo "Pruning..."
 
-        echo "$DELETING" | xargs --no-run-if-empty \
-                $KUBECTL_CMD -n $NS delete
+        pelton-scroll-output "echo -e '$DELETING' | xargs --no-run-if-empty \
+                $KUBECTL_CMD -n $NS delete"
     fi
 done

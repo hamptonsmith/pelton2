@@ -52,7 +52,7 @@ CONFIG_NAME=${CONFIG_NAME:-default}
 
 cd ${1:-.}
 if [[ ! -f pelton.json ]]; then
-    echo "$(pwd) does not have a pelton.json file."
+    1>&2 echo "$(pwd) does not have a pelton.json file."
     exit 1
 fi
 
@@ -79,6 +79,10 @@ while read -r SKIP; do
 done < "$VISITED_FILE_NAME"
 echo "$PROJECT_DNS_NAME $CONFIG_NAME $ISOLATION" >> "$VISITED_FILE_NAME"
 
+function doStep() {
+    3>&1 1>&2 2>&3 pelton-scroll-output "(${@}) 3>&1 1>&2 2>&3"
+}
+
 1>&2 echo "Building $PROJECT_NAME environment..."
 
 CONFIGURATION_JSON=$(cat pelton.json | jq -c ".configurations.$CONFIG_NAME")
@@ -94,18 +98,27 @@ IMAGE_NAME_BASE="${PROJECT_DNS_NAME}-${CONFIG_NAME}-${ISOLATION}"
 SCRIPT_ENV_IMAGE_NAME="${IMAGE_NAME_BASE}-psr"
 SERVICE_IMAGE_NAME="${DOCKER_REGISTRY}/${IMAGE_NAME_BASE}"
 
-if [[ -n "$BUILD_IMG_CMD" ]]; then
+function log() {
+    1>&2 echo "$1"
+}
+
+if [[ -e "$BUILD_IMG_CMD" ]]; then
+    log "* No .buildImage expression. Skipping."
+else
+    log "* .buildImage is: $BUILD_IMG_CMD"
+
     pelton-retry "waiting for registry at $DOCKER_REGISTRY" --timeout 300 \
             "curl --fail-with-body -X GET \"$DOCKER_REGISTRY/v2/\" &>/dev/null"
 
-    pelton-run-in-script-runner \
+    doStep pelton-run-in-script-runner \
             --config $CONFIG_NAME \
             --isolation $ISOLATION \
             --root-dir ${PELTON_ROOT_DIR@Q} \
-            ${BUILD_IMG_CMD}
+            "${BUILD_IMG_CMD}" 1>/dev/null
 
-    if ! eval ${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2; then
-        1>&2 'Are you sure you tagged it with $PELTON_IMAGE_TAG ?'
+    log "* Push image to registry at $DOCKER_REGISTRY..."
+    if ! doStep "${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2"; then
+        log 'Are you sure you tagged it with $PELTON_IMAGE_TAG ?'
         exit 1
     fi
 
@@ -113,30 +126,35 @@ if [[ -n "$BUILD_IMG_CMD" ]]; then
             "--format='{{index .RepoDigests 0}}'" ${SERVICE_IMAGE_NAME}:latest)
 fi
 
-if [[ -n "$PRINT_STATIC_DEPS_CMD" ]]; then
+if [[ -e "$PRINT_STATIC_DEPS_CMD" ]]; then
+    log "* No .printStaticDependencies expression for config $CONFIG_NAME."
+else
+    log "* .printStaticDependencies is: $PRINT_STATIC_DEPS_CMD"
     echo
     echo '---'
     echo "# pelton-build-environment $(pwd)"
     echo
 
-    pelton-run-in-script-runner \
+    doStep pelton-run-in-script-runner \
             --config $CONFIG_NAME \
             --isolation $ISOLATION \
             --root-dir ${PELTON_ROOT_DIR@Q} \
-            ${PRINT_STATIC_DEPS_CMD}
+            "${PRINT_STATIC_DEPS_CMD}"
 fi
 
-if [[ -z "$NEED_CLEANUP" && -n "$PRINT_SERVICE_CMD" ]]; then
-    echo
-    echo '---'
-    echo "# pelton-build-environment $(pwd)"
-    echo
+if [[ -z "$NEED_CLEANUP" ]]; then
+    log "* Not the top level service, so let's include any service definition..."
 
-    pelton-run-in-script-runner \
-            --config $CONFIG_NAME \
-            --isolation $ISOLATION \
-            --root-dir ${PELTON_ROOT_DIR@Q} \
-            ${PRINT_SERVICE_CMD}
+    if [[ -z "$PRINT_SERVICE_CMD" ]]; then
+        log "  No .printService. Skipping."
+    else
+        log "  .printService is: $PRINT_SERVICE_CMD"
+        doStep pelton-run-in-script-runner \
+                --config $CONFIG_NAME \
+                --isolation $ISOLATION \
+                --root-dir ${PELTON_ROOT_DIR@Q} \
+                "${PRINT_SERVICE_CMD}"
+    fi
 fi
 
 if [[ -n "$SERVICE_NAME" && -z "$NEED_CLEANUP" ]]; then

@@ -1,0 +1,88 @@
+#!/bin/bash
+
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    if [[ "${#POSITIONAL_ARGS[@]}" -gt 0 ]]; then
+        POSITIONAL_ARGS+=("$1")
+        shift
+    else
+        case $1 in
+            --error)
+                ERROR_FD="$2"
+                shift 2
+                ;;
+            --write)
+                WRITE_FD="$2"
+                shift 2
+                ;;
+            -*|--*)
+                echo "Unknown option $1"
+                exit 1
+                ;;
+            *)
+                POSITIONAL_ARGS+=("$1") # save positional arg
+                shift # past argument
+                ;;
+        esac
+    fi
+done
+
+set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
+
+ERROR_FD=${ERROR_FD:-2}
+WRITE_FD=${WRITE_FD:-1}
+
+COLOR="$(tput setaf 6)"
+RESET="$(tput sgr0)"
+TMP_FILE=$(mktemp)
+
+function render() {
+    tail -n5 "$TMP_FILE" | fold -w 70 | sed "s/^/$COLOR  > /" \
+    | sed "s/\$/$RESET/" | tail -n5
+}
+
+function clearLines() {
+    if [[ "$1" != "0" ]]; then
+        tput cuu $1
+        SHIFT_LINES=$1
+        while [[ "$SHIFT_LINES" -gt 0 ]]; do
+            echo -e "\033[0K"
+            SHIFT_LINES=$((SHIFT_LINES - 1))
+        done
+        tput cuu $1
+    fi
+}
+
+NUM_LINES=0
+
+set -o pipefail
+while IFS= read -r line; do
+    clearLines $NUM_LINES
+
+    echo "$line" >> "$TMP_FILE"
+    NUM_LINES=$(render | wc -l)
+    render
+done < <(eval "$@")
+SUBCOMMAND_RESULT="$?"
+set +o pipefail
+
+if [[ "$SUBCOMMAND_RESULT" != "0" ]]; then
+    function log() {
+        1>&${ERROR_FD} echo "$@"
+    }
+
+    1>&${ERROR_FD} cat "$TMP_FILE"
+    log
+    log "$(tput setaf 1)Command failed. See output above. Command was:$RESET"
+    log
+    log "$COLOR    $@ $RESET"
+    log
+    log "$(tput setaf 1)Log available at $TMP_FILE $RESET"
+    log
+    exit 1
+fi
+
+rm "$TMP_FILE"
+
+clearLines $NUM_LINES

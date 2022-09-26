@@ -62,6 +62,8 @@ PROJECT_SERVICE_NAME=$( \
         pelton-read-config ".configurations.$CONFIG_NAME.serviceName // \"\"")
 PROJECT_SERVICE_PORT=$( \
         pelton-read-config ".configurations.$CONFIG_NAME.servicePort // \"\"")
+PROJECT_JOB_NAME=$( \
+        pelton-read-config ".configurations.$CONFIG_NAME.jobName // \"\"")
 
 function doStep() {
     3>&1 1>&2 2>&3 pelton-scroll-output "(${@}) 3>&1 1>&2 2>&3"
@@ -144,6 +146,44 @@ if [[ -n "$PROJECT_PRINT_SERVICE_CMD" || -n "$PROJECT_SERVICE_NAME" ]]; then
     trap cleanup EXIT
 fi
 
+if [[ -n "$PROJECT_JOB_NAME" ]]; then
+    LIST_PODS="eval $KUBECTL_CMD -n $TARGET_NAMESPACE get pods "
+    LIST_PODS="$LIST_PODS --selector=job-name=$PROJECT_JOB_NAME"
+    LIST_PODS="$LIST_PODS --field-selector status.phase!=Pending"
+    LIST_PODS="$LIST_PODS -o=jsonpath='{.items[*].metadata.name}'"
+
+    # Wait for the job's pod to become available.
+    TASK_NAME="waiting for job/$PROJECT_JOB_NAME"
+    TASK_NAME="$TASK_NAME in namespace $NAMESPACE to have running pods"
+    pelton-retry "$TASK_NAME" --timeout 300 "$LIST_PODS | grep '.\+'" >/dev/null
+
+    for pod in $(eval $KUBECTL_CMD -n $TARGET_NAMESPACE get pods \
+            --selector=job-name=$PROJECT_JOB_NAME \
+            -o=jsonpath='{.items[*].metadata.name}'); do
+        # No point in using kubetail to interleave these, they should all
+        # terminate
+        echo -e "\n[$pod]"
+        eval $KUBECTL_CMD -n $TARGET_NAMESPACE logs --follow $pod
+    done
+
+    for pod in $(eval $KUBECTL_CMD -n $TARGET_NAMESPACE get pods \
+            --selector=job-name=$PROJECT_JOB_NAME \
+            --field-selector status.phase=Failed \
+            -o=jsonpath='{.items[*].metadata.name}'); do
+
+        eval $KUBECTL_CMD -n $TARGET_NAMESPACE describe pod $pod
+        echo -e "\nPod $pod of job $PROJECT_JOB_NAME failed. See logs above."
+        echo
+        SOME_FAILURE=yes
+    done
+
+    if [[ -z "$SOME_FAILURE" ]]; then
+        echo 'Job completed successfully.'
+    else
+        exit 1
+    fi
+fi
+
 if [[ -n "$PROJECT_SERVICE_NAME" ]]; then
     POD_SELECTOR_LINES=$( \
         eval "$KUBECTL_CMD -n $TARGET_NAMESPACE get svc/$PROJECT_SERVICE_NAME \
@@ -162,7 +202,5 @@ if [[ -n "$PROJECT_SERVICE_NAME" ]]; then
     TASK_NAME="$TASK_NAME in namespace $NAMESPACE to have running pods"
     pelton-retry "$TASK_NAME" "$LIST_PODS | grep '.\+'" >/dev/null
 
-    set +e
     kubetail $(eval $LIST_PODS) -n $TARGET_NAMESPACE
-    set -e
 fi

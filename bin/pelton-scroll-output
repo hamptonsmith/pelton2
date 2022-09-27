@@ -57,13 +57,13 @@ function clearLines() {
 NUM_LINES=0
 
 set -o pipefail
-while IFS= read -r line; do
+eval "$@" | while IFS= read -r line; do
     clearLines $NUM_LINES
 
     echo "$line" >> "$TMP_FILE"
     NUM_LINES=$(render | wc -l)
     render
-done < <(eval "$@")
+done
 SUBCOMMAND_RESULT="$?"
 set +o pipefail
 
@@ -83,6 +83,5 @@ if [[ "$SUBCOMMAND_RESULT" != "0" ]]; then
     exit 1
 fi
 
+clearLines $(render | wc -l)
 rm "$TMP_FILE"
-
-clearLines $NUM_LINES

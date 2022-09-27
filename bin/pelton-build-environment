@@ -114,7 +114,7 @@ else
             --config $CONFIG_NAME \
             --isolation $ISOLATION \
             --root-dir ${PELTON_ROOT_DIR@Q} \
-            "${BUILD_IMG_CMD}" 1>/dev/null
+            "${BUILD_IMG_CMD}" 1>&2
 
     log "* Push image to registry at $DOCKER_REGISTRY..."
     if ! doStep "${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2"; then

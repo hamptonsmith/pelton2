@@ -83,7 +83,7 @@ function doStep() {
     3>&1 1>&2 2>&3 pelton-scroll-output "(${@}) 3>&1 1>&2 2>&3"
 }
 
-1>&2 echo "Building $PROJECT_NAME environment..."
+1>&2 echo "Building $PROJECT_NAME[$CONFIG_NAME] environment..."
 
 CONFIGURATION_JSON=$(cat pelton.json | jq -c ".configurations.$CONFIG_NAME")
 PRINT_STATIC_DEPS_CMD=$( \
@@ -139,7 +139,7 @@ else
             --config $CONFIG_NAME \
             --isolation $ISOLATION \
             --root-dir ${PELTON_ROOT_DIR@Q} \
-            "${PRINT_STATIC_DEPS_CMD}"
+            "${PRINT_STATIC_DEPS_CMD@Q}"
 fi
 
 if [[ -z "$NEED_CLEANUP" ]]; then
@@ -153,7 +153,7 @@ if [[ -z "$NEED_CLEANUP" ]]; then
                 --config $CONFIG_NAME \
                 --isolation $ISOLATION \
                 --root-dir ${PELTON_ROOT_DIR@Q} \
-                "${PRINT_SERVICE_CMD}"
+                "${PRINT_SERVICE_CMD@Q}"
     fi
 fi
 

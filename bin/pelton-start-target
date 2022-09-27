@@ -57,7 +57,7 @@ PROJECT_DNS_NAME=$(cat pelton.json | jq -r '.projectDnsName');
 PROJECT_NAMED_CONFIG=$(cat pelton.json | jq -r ".configurations.$CONFIG_NAME")
 PROJECT_START=$(echo "$PROJECT_NAMED_CONFIG" | jq -r '.start // ""')
 PROJECT_PRINT_SERVICE_CMD=$( \
-        pelton-read-config ".configurations.$CONFIG_NAME.printService")
+        pelton-read-config ".configurations.$CONFIG_NAME.printService // \"\"")
 PROJECT_SERVICE_NAME=$( \
         pelton-read-config ".configurations.$CONFIG_NAME.serviceName // \"\"")
 PROJECT_SERVICE_PORT=$( \
@@ -73,7 +73,9 @@ function serviceManifest() {
     echo
     echo "# pelton-start-target $(pwd)"
 
-    if [[ -n "$PROJECT_PRINT_SERVICE_CMD" ]]; then
+    if [[ -z "$PROJECT_PRINT_SERVICE_CMD" ]]; then
+        1>&2 echo "* No target .printService command. Skipping."
+    else
         1>&2 echo "* Running target .printService: $PROJECT_PRINT_SERVICE_CMD"
 
         echo '---'

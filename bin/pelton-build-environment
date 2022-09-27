@@ -102,7 +102,7 @@ function log() {
     1>&2 echo "$1"
 }
 
-if [[ -e "$BUILD_IMG_CMD" ]]; then
+if [[ -z "$BUILD_IMG_CMD" ]]; then
     log "* No .buildImage expression. Skipping."
 else
     log "* .buildImage is: $BUILD_IMG_CMD"
@@ -114,7 +114,7 @@ else
             --config $CONFIG_NAME \
             --isolation $ISOLATION \
             --root-dir ${PELTON_ROOT_DIR@Q} \
-            "${BUILD_IMG_CMD}" 1>&2
+            "${BUILD_IMG_CMD@Q}" 1>&2
 
     log "* Push image to registry at $DOCKER_REGISTRY..."
     if ! doStep "${DOCKER_CMD} push ${SERVICE_IMAGE_NAME} 1>&2"; then
@@ -126,7 +126,7 @@ else
             "--format='{{index .RepoDigests 0}}'" ${SERVICE_IMAGE_NAME}:latest)
 fi
 
-if [[ -e "$PRINT_STATIC_DEPS_CMD" ]]; then
+if [[ -z "$PRINT_STATIC_DEPS_CMD" ]]; then
     log "* No .printStaticDependencies expression for config $CONFIG_NAME."
 else
     log "* .printStaticDependencies is: $PRINT_STATIC_DEPS_CMD"

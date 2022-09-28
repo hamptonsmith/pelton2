@@ -140,6 +140,9 @@ else
             --isolation $ISOLATION \
             --root-dir ${PELTON_ROOT_DIR@Q} \
             "${PRINT_STATIC_DEPS_CMD@Q}"
+
+    echo
+    echo '...'
 fi
 
 if [[ -z "$NEED_CLEANUP" ]]; then
@@ -149,11 +152,20 @@ if [[ -z "$NEED_CLEANUP" ]]; then
         log "  No .printService. Skipping."
     else
         log "  .printService is: $PRINT_SERVICE_CMD"
+
+        echo
+        echo '---'
+        echo "# pelton-build-environment .printService $(pwd)"
+        echo
+
         doStep pelton-run-in-script-runner \
                 --config $CONFIG_NAME \
                 --isolation $ISOLATION \
                 --root-dir ${PELTON_ROOT_DIR@Q} \
                 "${PRINT_SERVICE_CMD@Q}"
+
+        echo
+        echo '...'
     fi
 fi
 

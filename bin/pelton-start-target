@@ -165,7 +165,7 @@ if [[ -n "$PROJECT_JOB_NAME" ]]; then
         # No point in using kubetail to interleave these, they should all
         # terminate
         echo -e "\n[$pod]"
-        eval $KUBECTL_CMD -n $TARGET_NAMESPACE logs --all-containers true --follow $pod
+        eval $KUBECTL_CMD -n $TARGET_NAMESPACE logs --all-containers=true --follow $pod
     done
 
     for pod in $(eval $KUBECTL_CMD -n $TARGET_NAMESPACE get pods \

@@ -163,8 +163,6 @@ if [[ -n "$PROJECT_JOB_NAME" || -n "$PROJECT_JOB_POD_SELECTOR" ]]; then
 
     LIST_PODS="$LIST_PODS -o=jsonpath='{.items[*].metadata.name}'"
 
-    echo ">>> $LIST_PODS"
-
     # Wait for the job's pod to become available.
     TASK_NAME="waiting for job/$PROJECT_JOB_NAME"
     TASK_NAME="$TASK_NAME in namespace $TARGET_NAMESPACE to have running pods"

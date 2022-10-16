@@ -13,37 +13,47 @@ export PELTON_STATE_DIR=${PELTON_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --config)
-            CONFIG_NAME="$2"
-            shift 2
-            ;;
-        --isolation)
-            ISOLATION="$2"
-            shift 2
-            ;;
-        --target-namespace)
-            TARGET_NAMESPACE="$2"
-            shift 2
-            ;;
-        -*|--*)
-            echo "Unknown option $1"
-            exit 1
-            ;;
-        *)
-            POSITIONAL_ARGS+=("$1") # save positional arg
-            shift # past argument
-            ;;
-    esac
+    if [[ "${#POSITIONAL_ARGS[@]}" -gt 0 ]]; then
+        POSITIONAL_ARGS+=("$1")
+        shift
+    else
+        case $1 in
+            --config)
+                CONFIG_NAME="$2"
+                shift 2
+                ;;
+            --isolation)
+                ISOLATION="$2"
+                shift 2
+                ;;
+            --target-namespace)
+                TARGET_NAMESPACE="$2"
+                shift 2
+                ;;
+            -*|--*)
+                echo "Unknown option $1"
+                exit 1
+                ;;
+            *)
+                POSITIONAL_ARGS+=("$1") # save positional arg
+                shift # past argument
+                ;;
+        esac
+    fi
 done
 
 set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
 
-TARGET_DIR=${1:-.}
-cd $TARGET_DIR
-shift
+if [[ -n "$1" ]]; then
+    TARGET_DIR=${1}
+    shift
+else
+    TARGET_DIR='.'
+fi
 
-export PELTON_START_ARGS=$(jq --compact-output --null-input '$ARGS.positional' --args -- "${@}");
+cd $TARGET_DIR
+
+export PELTON_START_ARGS=$(jq --compact-output --null-input '$ARGS.positional' --args -- "${@}")
 
 CONFIG_NAME=${CONFIG_NAME:-default}
 ISOLATION=${ISOLATION:-a}
@@ -91,7 +101,7 @@ function serviceManifest() {
                 --config $CONFIG_NAME \
                 --isolation $ISOLATION \
                 --root-dir ${PELTON_ROOT_DIR@Q} \
-                --start-args $PELTON_START_ARGS \
+                --start-args '$PELTON_START_ARGS' \
                 '${PROJECT_PRINT_SERVICE_CMD}'"
 
         echo

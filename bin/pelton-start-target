@@ -39,12 +39,15 @@ done
 
 set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
 
+TARGET_DIR=${1:-.}
+cd $TARGET_DIR
+shift
+
+export PELTON_START_ARGS=$(jq --compact-output --null-input '$ARGS.positional' --args -- "${@}");
+
 CONFIG_NAME=${CONFIG_NAME:-default}
 ISOLATION=${ISOLATION:-a}
 TARGET_NAMESPACE=${TARGET_NAMESPACE:-default}
-
-TARGET_DIR=${1:-.}
-cd $TARGET_DIR
 
 if [[ ! -f pelton.json ]]; then
     echo "$TARGET_DIR does not have a pelton.json file."
@@ -88,6 +91,7 @@ function serviceManifest() {
                 --config $CONFIG_NAME \
                 --isolation $ISOLATION \
                 --root-dir ${PELTON_ROOT_DIR@Q} \
+                --start-args $PELTON_START_ARGS \
                 '${PROJECT_PRINT_SERVICE_CMD}'"
 
         echo
@@ -130,16 +134,19 @@ NAMESPACE="$PELTON_DNS_PREFIX$PROJECT_DNS_NAME-$CONFIG_NAME-$ISOLATION"
 OUTPUT_FILE="$(pelton-ns-state-dir $NAMESPACE)/env.yaml"
 mkdir -p $(dirname "$OUTPUT_FILE")
 
+pelton-sync-ns "$NAMESPACE" "$PROJECT_NAME's dependences out of sync in namespace $NAMESPACE. Syncing before attempting to update..."
 pelton-build-environment \
         --config $CONFIG_NAME --isolation $ISOLATION \
         > "$OUTPUT_FILE"
-pelton-sync-ns "$NAMESPACE"
+pelton-sync-ns "$NAMESPACE" "$PROJECT_NAME's dependencies have changed. Syncing in namespace $NAMESPACE..."
 
 if [[ -n "$PROJECT_PRINT_SERVICE_CMD" || -n "$PROJECT_SERVICE_NAME" ]]; then
     OUTPUT_FILE="$(pelton-ns-state-dir "$TARGET_NAMESPACE")/$NAMESPACE.yaml"
     mkdir -p $(dirname "$OUTPUT_FILE")
+
+    pelton-sync-ns "$TARGET_NAMESPACE" "$PROJECT_NAME is out of sync in namespace $TARGET_NAMESPACE. Syncing before attempting to update..."
     serviceManifest $CONFIG_NAME > "$OUTPUT_FILE"
-    pelton-sync-ns "$TARGET_NAMESPACE"
+    pelton-sync-ns "$TARGET_NAMESPACE" "$PROJECT_NAME's definition has changed. Syncing in namespace $TARGET_NAMESPACE..."
 
     function cleanup() {
         OUTPUT_FILE="$(pelton-ns-state-dir "$TARGET_NAMESPACE")/$NAMESPACE.yaml"
@@ -164,7 +171,7 @@ if [[ -n "$PROJECT_JOB_NAME" || -n "$PROJECT_JOB_POD_SELECTOR" ]]; then
     LIST_PODS="$LIST_PODS -o=jsonpath='{.items[*].metadata.name}'"
 
     # Wait for the job's pod to become available.
-    TASK_NAME="waiting for job/$PROJECT_JOB_NAME"
+    TASK_NAME="waiting for $PROJECT_NAME's jobs"
     TASK_NAME="$TASK_NAME in namespace $TARGET_NAMESPACE to have running pods"
     pelton-retry "$TASK_NAME" --timeout 300 "$LIST_PODS --field-selector status.phase!=Pending | grep '.\+'" >/dev/null
 
@@ -172,7 +179,7 @@ if [[ -n "$PROJECT_JOB_NAME" || -n "$PROJECT_JOB_POD_SELECTOR" ]]; then
         # No point in using kubetail to interleave these, they should all
         # terminate
         echo -e "\n[$pod]"
-        eval $KUBECTL_CMD -n $TARGET_NAMESPACE logs --all-containers=true --follow $pod
+        pelton-retry "waiting for $PROJECT_NAME's job's pod $pod logs..." --timeout 300 "$KUBECTL_CMD -n $TARGET_NAMESPACE logs --all-containers=true --follow $pod"
     done
 
     for pod in $(eval $LIST_PODS --field-selector status.phase=Failed); do

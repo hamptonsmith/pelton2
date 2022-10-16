@@ -5,9 +5,11 @@ set -e
 export KUBECTL_CMD=${KUBECTL_CMD:-microk8s kubectl}
 
 if [[ -z "$1" ]]; then
-    echo 'Must provide at least one namespace.'
+    echo 'Must provide a namespace.'
     exit 1
 fi
+
+LABEL=${2:-Updating namespace $1...}
 
 function nsManifest() {
     find $(pelton-ns-state-dir $1) -name '*.yaml' | xargs --no-run-if-empty cat
@@ -17,41 +19,61 @@ function nsManifest() {
     cat /usr/share/pelton/ns-defaults.yaml | envsubst
 }
 
-for NS in "$@"; do
-    TMP_FILE=$(mktemp)
-    nsManifest "$1" > "$TMP_FILE"
+TMP_FILE=$(mktemp)
+nsManifest "$1" > "$TMP_FILE"
 
-    echo "Updating namespace $NS..."
+function cleanup() {
+    echo "Error synchronizing. See attempted manifest in $TMP_FILE"
+    exit 1
+}
 
-    eval $KUBECTL_CMD create namespace $NS 2>/dev/null || true
+trap cleanup EXIT
+
+eval $KUBECTL_CMD create namespace $1 2>/dev/null || true
+
+# Catch any syntax errors...
+cat "$TMP_FILE" | microk8s kubectl -n $1 apply -f - --dry-run=server &>/dev/null
+
+UPDATING=$(cat "$TMP_FILE" | microk8s kubectl -n $1 apply -f - --dry-run=server)
+
+if [[ -n "$UPDATING" ]]; then
+    echo $LABEL
+    LABELED=yes
 
     pelton-scroll-output \
-            "cat '$TMP_FILE' | microk8s kubectl -n $NS apply -f -"
+            "cat '$TMP_FILE' | microk8s kubectl -n $1 apply -f - 2>&1"
+fi
 
-    DELETING=$(cat "$TMP_FILE" \
-            | eval $KUBECTL_CMD -n $NS apply \
-                    -f - \
-                    --prune \
-                    --all \
-                    --dry-run=server \
-            | cut -d' ' -f1-2 \
-            | grep '^.* pruned$' \
-            | grep -v '^namespace/' \
-            | cut -d' ' -f1)
+DELETING=$(cat "$TMP_FILE" \
+        | eval $KUBECTL_CMD -n $1 apply \
+                -f - \
+                --prune \
+                --all \
+                --dry-run=server \
+        | cut -d' ' -f1-2 \
+        | grep '^.* pruned$' \
+        | grep -v '^namespace/' \
+        | cut -d' ' -f1)
 
-    if [[ -n "$DELETING" ]]; then
-        DND_PATH="${XDG_CONFIG_HOME:-$HOME/.config}"
-        DND_PATH="$DND_PATH/pelton/environment/namespaces/$NS/do-not-delete"
-
-        if [[ -f "$DND_PATH" ]]; then
-            for PATTERN in $(cat "$DND_PATH"); do
-                DELETING=$(echo "$DELETING" | grep -v "^$PATTERN\$")
-            done
-        fi
-
-        echo "Pruning..."
-
-        pelton-scroll-output "echo -e '$DELETING' | xargs --no-run-if-empty \
-                $KUBECTL_CMD -n $NS delete"
+if [[ -n "$DELETING" ]]; then
+    if [[ -z "$LABELED" ]]; then
+        echo $LABEL
+        LABELED=yes
     fi
-done
+
+    DND_PATH="${XDG_CONFIG_HOME:-$HOME/.config}"
+    DND_PATH="$DND_PATH/pelton/environment/namespaces/$1/do-not-delete"
+
+    if [[ -f "$DND_PATH" ]]; then
+        for PATTERN in $(cat "$DND_PATH"); do
+            DELETING=$(echo "$DELETING" | grep -v "^$PATTERN\$")
+        done
+    fi
+
+    pelton-scroll-output "echo -e '$DELETING' | xargs --no-run-if-empty \
+            $KUBECTL_CMD -n $1 delete 2>&1"
+fi
+
+rm "$TMP_FILE"
+
+trap - EXIT

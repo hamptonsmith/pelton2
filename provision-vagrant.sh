@@ -1,15 +1,17 @@
 #!/bin/bash
 
+echo '=== Pelton Provision Load ==='
+
 function provisionVagrant() {
-    set -e
+    set -ex
 
     cd $HOME
 
-    apt-get -yqq update
+    apt-get -y update
 
     # We'll use `git` to download / update pelton.
     # `install` is a pelton installer dependency.
-    apt-get -yqq install git
+    apt-get -y install git
 
     if [[ -d pelton ]]; then
         cd pelton
@@ -20,7 +22,7 @@ function provisionVagrant() {
     fi
 
     # Install/update pelton. This also installs docker, jq, and microk8s.
-    APT_CMD='apt-get -yqq' ./bin/pelton-burrow
+    APT_CMD='apt-get -y' ./bin/pelton-burrow
 
     # Get vagrant user added to microk8s group for easy command line use.
     usermod -a -G microk8s vagrant
@@ -52,4 +54,6 @@ function provisionVagrant() {
     fi
 }
 
+echo '=== Pelton Provision Start ==='
 provisionVagrant
+echo '=== Pelton Provision Done! ==='

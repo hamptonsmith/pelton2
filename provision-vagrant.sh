@@ -19,6 +19,7 @@ function provisionVagrant() {
     else
         git clone https://github.com/hamptonsmith/pelton2.git pelton
         cd pelton
+        git checkout debug
     fi
 
     # Install/update pelton. This also installs docker, jq, and microk8s.

@@ -27,8 +27,7 @@ if ! which microk8s &>/dev/null; then
     eval $MICROK8S_CMD status --wait-ready
 fi
 
-eval $MICROK8S_CMD enable dns host-access hostpath-storage ingress \
-        metallb:10.10.10.10-10.10.10.200 registry
+eval $MICROK8S_CMD enable dns host-access hostpath-storage ingress registry
 
 eval $INSTALL_CMD --mode 755 --owner root "$(dirname "$0")/*" /usr/bin/
 eval $INSTALL_CMD \

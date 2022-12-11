@@ -101,7 +101,7 @@ function serviceManifest() {
                 --config $CONFIG_NAME \
                 --isolation $ISOLATION \
                 --root-dir ${PELTON_ROOT_DIR@Q} \
-                --start-args '$PELTON_START_ARGS' \
+                --start-args ${PELTON_START_ARGS@Q} \
                 '${PROJECT_PRINT_SERVICE_CMD}'"
 
         echo

@@ -80,7 +80,7 @@ eval $DOCKER_CMD run \
         -e PELTON_ISO_KEY=$ISOLATION \
         -e PELTON_IMAGE_TAG="$SERVICE_IMAGE_NAME" \
         -e PELTON_PROJ_HOST_DIR="$(realpath $(pwd))" \
-        -e PELTON_START_ARGS="$PELTON_START_ARGS" \
+        -e PELTON_START_ARGS=${PELTON_START_ARGS@Q} \
         -e DOCKER_REGISTRY="$DOCKER_REGISTRY" \
         $SCRIPT_ENV_IMAGE_NAME \
         sh -c ${ALL_ARGS@Q}
